@@ -82,14 +82,35 @@ async function loadDataFromFirebase() {
                 if (notification.action && notification.action.text) {
                     restoredNotification.action = {
                         text: notification.action.text,
+                        link: notification.action.link || null,
                         callback: () => {
-                            // Find the job by title or message to restore callback
-                            const job = AppState.jobs.find(j => 
-                                notification.title.includes(j.companyName) || 
-                                notification.message.includes(j.companyName)
-                            );
-                            if (job) {
-                                showJobDetail(job.id);
+                            // If there's a link, open it
+                            if (notification.action.link) {
+                                window.open(notification.action.link, '_blank');
+                            } else {
+                                // Determine the appropriate callback based on notification content
+                                if (notification.action.text.toLowerCase().includes('shortlisted') || 
+                                    notification.title.toLowerCase().includes('shortlisted') ||
+                                    notification.message.toLowerCase().includes('shortlisted')) {
+                                    showShortlistedView();
+                                } else if (notification.action.text.toLowerCase().includes('view details') ||
+                                          notification.action.text.toLowerCase().includes('details')) {
+                                    // Find the job by title or message to restore callback
+                                    const job = AppState.jobs.find(j => 
+                                        notification.title.includes(j.company) || 
+                                        notification.message.includes(j.company) ||
+                                        notification.title.includes(j.title) ||
+                                        notification.message.includes(j.title)
+                                    );
+                                    if (job) {
+                                        showJobDetail(job.id);
+                                    } else {
+                                        showNotification('Job details not found', 'error');
+                                    }
+                                } else {
+                                    // Default action for other notifications
+                                    showNotification('Action executed', 'info');
+                                }
                             }
                         }
                     };
@@ -102,6 +123,9 @@ async function loadDataFromFirebase() {
             
             console.log('✅ Data loaded from Firebase - Jobs count:', AppState.jobs.length);
             showNotification('Data loaded from cloud!', 'success');
+            
+            // Check and update job statuses based on deadlines
+            checkAndUpdateJobStatuses();
         } else {
             // First time load - start with empty data
             AppState.jobs = [];
@@ -264,6 +288,9 @@ async function initializeApp() {
     
     // Initialize animations
     animateElements();
+    
+    // Set up periodic job status checks (every 5 minutes)
+    setInterval(checkAndUpdateJobStatuses, 5 * 60 * 1000);
 }
 
 // Offline detection and handling
@@ -463,6 +490,9 @@ function setActiveNav(activeId) {
 
 // Student Dashboard Functions
 function loadJobs() {
+    // Check and update job statuses before displaying
+    checkAndUpdateJobStatuses();
+    
     const jobListings = document.getElementById('job-listings');
     jobListings.innerHTML = '';
     
@@ -688,6 +718,9 @@ function loadAdminDashboard() {
 
 
 function loadAdminJobList() {
+    // Check and update job statuses before displaying
+    checkAndUpdateJobStatuses();
+    
     const adminJobList = document.getElementById('admin-job-list');
     if (!adminJobList) {
         console.log('admin-job-list element not found, skipping reload');
@@ -747,6 +780,10 @@ function createAdminJobCard(job) {
                     <button class="admin-btn view-shortlist-btn" onclick="viewJobShortlist(${job.id})" title="View Shortlisted Candidates">
                         <i class="fas fa-eye"></i>
                         View
+                    </button>
+                    <button class="admin-btn delete-shortlist-btn" onclick="deleteJobShortlisted(${job.id})" title="Delete Shortlisted Candidates">
+                        <i class="fas fa-user-times"></i>
+                        Delete Shortlisted
                     </button>
                 ` : ''}
                 <button class="admin-btn delete-btn" onclick="deleteJob(${job.id})">
@@ -1272,99 +1309,60 @@ function displayShortlistedData(data) {
     // Load company view by default
     loadCompanyView();
     
-    // Also populate table view
-    populateTableView(data);
-    
     // Hide upload progress and show data section
     document.getElementById('shortlisted-upload-progress').style.display = 'none';
     document.getElementById('shortlisted-data-section').style.display = 'block';
     document.getElementById('no-shortlisted-data').style.display = 'none';
 }
 
-function populateTableView(data) {
-    const tableHeader = document.getElementById('shortlisted-table-header');
-    const tableBody = document.getElementById('shortlisted-table-body');
-    
-    // Clear previous data
-    tableHeader.innerHTML = '';
-    tableBody.innerHTML = '';
-    
-    // Create header
-    const headerRow = document.createElement('tr');
-    data[0].forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-        headerRow.appendChild(th);
-    });
-    tableHeader.appendChild(headerRow);
-    
-    // Create body rows
-    for (let i = 1; i < data.length; i++) {
-        const row = document.createElement('tr');
-        row.style.opacity = '0';
-        row.style.transform = 'translateY(10px)';
-        
-        data[i].forEach(cell => {
-            const td = document.createElement('td');
-            td.textContent = cell || '';
-            row.appendChild(td);
-        });
-        
-        tableBody.appendChild(row);
-        
-        // Animate row appearance
-        setTimeout(() => {
-            row.style.transition = 'all 0.3s ease';
-            row.style.opacity = '1';
-            row.style.transform = 'translateY(0)';
-        }, i * 50);
-    }
-}
 
 function filterShortlistedCandidates() {
-    const searchTerm = document.getElementById('shortlisted-search').value.toLowerCase();
+    const searchTerm = document.getElementById('shortlisted-search').value.toLowerCase().trim();
+    
+    console.log('Search term:', searchTerm);
+    console.log('Original data length:', AppState.shortlistedData ? AppState.shortlistedData.length : 0);
     
     if (!AppState.shortlistedData || AppState.shortlistedData.length === 0) return;
     
     if (!searchTerm) {
         AppState.filteredShortlistedData = AppState.shortlistedData;
+        console.log('No search term, showing all data');
     } else {
-        AppState.filteredShortlistedData = [
-            AppState.shortlistedData[0], // Keep header
-            ...AppState.shortlistedData.slice(1).filter(row => {
-                return row.some(cell => 
-                    cell && cell.toString().toLowerCase().includes(searchTerm)
-                );
-            })
-        ];
-    }
-    
-    updateShortlistedTable();
-}
-
-function updateShortlistedTable() {
-    const tableBody = document.getElementById('shortlisted-table-body');
-    tableBody.innerHTML = '';
-    
-    // Create body rows with filtered data
-    for (let i = 1; i < AppState.filteredShortlistedData.length; i++) {
-        const row = document.createElement('tr');
-        
-        AppState.filteredShortlistedData[i].forEach(cell => {
-            const td = document.createElement('td');
-            td.textContent = cell || '';
-            row.appendChild(td);
+        const filteredRows = AppState.shortlistedData.slice(1).filter(row => {
+            const matches = row.some(cell => {
+                if (!cell) return false;
+                const cellValue = cell.toString().toLowerCase().trim();
+                
+                console.log('Checking cell:', cellValue, 'against search term:', searchTerm);
+                
+                // Simple and reliable search: just check if the search term is contained in the cell value
+                if (cellValue.includes(searchTerm)) {
+                    console.log('Match found!', cellValue, 'contains', searchTerm);
+                    return true;
+                }
+                
+                return false;
+            });
+            
+            if (matches) {
+                console.log('Match found in row:', row);
+            }
+            return matches;
         });
         
-        tableBody.appendChild(row);
+        AppState.filteredShortlistedData = [
+            AppState.shortlistedData[0], // Keep header
+            ...filteredRows
+        ];
         
-        // Animate row appearance
-        setTimeout(() => {
-            row.style.opacity = '1';
-            row.style.transform = 'translateY(0)';
-        }, i * 30);
+        console.log('Filtered data length:', AppState.filteredShortlistedData.length);
+        console.log('Filtered rows:', filteredRows.length);
     }
+    
+    // Update company view
+    loadCompanyView();
 }
+
 
 function exportShortlistedData() {
     if (!AppState.shortlistedData || AppState.shortlistedData.length === 0) {
@@ -1672,9 +1670,6 @@ function saveShortlistedData() {
         displayShortlistedData(AppState.shortlistedData);
     }
     
-    // Update admin stats
-    updateShortlistedStats();
-    
     // Clear temp data
     window.tempShortlistedData = null;
     
@@ -1714,23 +1709,9 @@ function dismissBanner() {
 
 function showCompanyView() {
     document.getElementById('company-view').style.display = 'block';
-    document.getElementById('table-view').style.display = 'none';
-    
-    // Update buttons
-    document.getElementById('company-view-btn').classList.add('active');
-    document.getElementById('table-view-btn').classList.remove('active');
-    
     loadCompanyView();
 }
 
-function showTableView() {
-    document.getElementById('company-view').style.display = 'none';
-    document.getElementById('table-view').style.display = 'block';
-    
-    // Update buttons
-    document.getElementById('company-view-btn').classList.remove('active');
-    document.getElementById('table-view-btn').classList.add('active');
-}
 
 function loadCompanyView() {
     const companiesGrid = document.getElementById('companies-grid');
@@ -1779,16 +1760,19 @@ function loadCompanyView() {
             }
         });
     } else if (AppState.shortlistedData.length > 1) {
-        // Fallback to global shortlisted data
-        const headers = AppState.shortlistedData[0];
+        // Fallback to global shortlisted data - use filtered data if available
+        const dataToUse = AppState.filteredShortlistedData && AppState.filteredShortlistedData.length > 0 ? 
+                         AppState.filteredShortlistedData : AppState.shortlistedData;
+        
+        const headers = dataToUse[0];
         const companyIndex = headers.findIndex(header => 
             header.toLowerCase().includes('company') || 
             header.toLowerCase().includes('organization')
         );
         
         if (companyIndex !== -1) {
-            for (let i = 1; i < AppState.shortlistedData.length; i++) {
-                const row = AppState.shortlistedData[i];
+            for (let i = 1; i < dataToUse.length; i++) {
+                const row = dataToUse[i];
                 const company = row[companyIndex] || 'Unknown Company';
                 
                 if (!companiesMap.has(company)) {
@@ -2034,9 +2018,17 @@ function populateCompanyCandidatesTable(data) {
     const tableHeader = document.getElementById('company-candidates-header');
     const tableBody = document.getElementById('company-candidates-body');
     
+    console.log('populateCompanyCandidatesTable called with data:', data);
+    console.log('Data length:', data ? data.length : 0);
+    
     // Clear previous data
     tableHeader.innerHTML = '';
     tableBody.innerHTML = '';
+    
+    if (!data || data.length === 0) {
+        console.log('No data provided to populateCompanyCandidatesTable');
+        return;
+    }
     
     // Create header
     const headerRow = document.createElement('tr');
@@ -2052,6 +2044,8 @@ function populateCompanyCandidatesTable(data) {
         const row = document.createElement('tr');
         row.style.opacity = '0';
         row.style.transform = 'translateY(10px)';
+        
+        console.log('Creating row for data:', data[i]);
         
         data[i].forEach(cell => {
             const td = document.createElement('td');
@@ -2071,64 +2065,55 @@ function populateCompanyCandidatesTable(data) {
 }
 
 function filterCompanyCandidates() {
-    const searchTerm = document.getElementById('company-candidate-search').value.toLowerCase();
+    const searchTerm = document.getElementById('company-candidate-search').value.toLowerCase().trim();
     
-    if (!AppState.currentCompanyData || AppState.currentCompanyData.length === 0) return;
+    console.log('filterCompanyCandidates: Search term:', searchTerm);
+    console.log('filterCompanyCandidates: Current company data:', AppState.currentCompanyData);
+    
+    if (!AppState.currentCompanyData || AppState.currentCompanyData.length === 0) {
+        console.log('filterCompanyCandidates: No company data available');
+        return;
+    }
     
     let filteredData;
     if (!searchTerm) {
         filteredData = AppState.currentCompanyData;
+        console.log('filterCompanyCandidates: No search term, showing all data');
     } else {
-        filteredData = [
-            AppState.currentCompanyData[0], // Keep headers
-            ...AppState.currentCompanyData.slice(1).filter(row => {
-                return row.some(cell => 
-                    cell && cell.toString().toLowerCase().includes(searchTerm)
-                );
-            })
-        ];
-    }
-    
-    // Update table with filtered data
-    const tableBody = document.getElementById('company-candidates-body');
-    tableBody.innerHTML = '';
-    
-    // Highlight matching rows
-    for (let i = 1; i < filteredData.length; i++) {
-        const row = document.createElement('tr');
-        
-        // Check if this row matches the search term
-        const isMatch = searchTerm && filteredData[i].some(cell => 
-            cell && cell.toString().toLowerCase().includes(searchTerm)
-        );
-        
-        if (isMatch) {
-            row.classList.add('highlight-row');
-        }
-        
-        filteredData[i].forEach(cell => {
-            const td = document.createElement('td');
-            const cellText = cell || '';
+        const filteredRows = AppState.currentCompanyData.slice(1).filter(row => {
+            const matches = row.some(cell => {
+                if (!cell) return false;
+                const cellValue = cell.toString().toLowerCase().trim();
+                
+                console.log('filterCompanyCandidates: Checking cell:', cellValue, 'against search term:', searchTerm);
+                
+                // Simple and reliable search: just check if the search term is contained in the cell value
+                if (cellValue.includes(searchTerm)) {
+                    console.log('filterCompanyCandidates: Match found!', cellValue, 'contains', searchTerm);
+                    return true;
+                }
+                
+                return false;
+            });
             
-            // Highlight matching text
-            if (searchTerm && cellText.toLowerCase().includes(searchTerm)) {
-                const regex = new RegExp(`(${searchTerm})`, 'gi');
-                td.innerHTML = cellText.replace(regex, '<mark>$1</mark>');
-            } else {
-                td.textContent = cellText;
+            if (matches) {
+                console.log('filterCompanyCandidates: Match found in row:', row);
             }
-            
-            row.appendChild(td);
+            return matches;
         });
         
-        tableBody.appendChild(row);
+        filteredData = [
+            AppState.currentCompanyData[0], // Keep headers
+            ...filteredRows
+        ];
         
-        // Animate row appearance
-        setTimeout(() => {
-            row.style.opacity = '1';
-            row.style.transform = 'translateY(0)';
-        }, i * 50);
+        console.log('filterCompanyCandidates: Filtered data length:', filteredData.length);
+        console.log('filterCompanyCandidates: Filtered rows:', filteredRows.length);
     }
+    
+    // Update table with filtered data using the proper function
+    console.log('filterCompanyCandidates: Calling populateCompanyCandidatesTable with filtered data');
+    populateCompanyCandidatesTable(filteredData);
     
     // Show message if no results
     if (filteredData.length <= 1) {
@@ -2180,6 +2165,7 @@ function addNotification(notification) {
         action: notification.action || null
     };
     
+    
     AppState.notifications.unshift(newNotification);
     
     // Keep only last 10 notifications
@@ -2228,7 +2214,7 @@ function displayNotifications() {
                 <div class="notification-time">${timeAgo}</div>
                 ${notification.action ? `
                     <div class="notification-action">
-                        <button class="notification-btn" onclick="executeNotificationAction(${notification.id})">
+                        <button class="notification-btn" onclick="executeNotificationAction('${notification.id}')">
                             ${notification.action.text}
                         </button>
                     </div>
@@ -2290,10 +2276,55 @@ function markAllNotificationsRead() {
 }
 
 function executeNotificationAction(notificationId) {
-    const notification = AppState.notifications.find(n => n.id === notificationId);
+    // Prevent event bubbling
+    if (event) {
+        event.stopPropagation();
+    }
+    
+    // Convert notificationId to number for comparison
+    const id = parseInt(notificationId);
+    
+    const notification = AppState.notifications.find(n => n.id === id);
+    
     if (notification && notification.action && notification.action.callback) {
-        notification.action.callback();
-        markNotificationRead(notificationId);
+        try {
+            notification.action.callback();
+            markNotificationRead(id);
+        } catch (error) {
+            console.error('Error executing notification action:', error);
+            showNotification('Error executing action. Please try again.', 'error');
+        }
+    } else {
+        // Try to restore callback if it's missing
+        if (notification && notification.action && notification.action.text) {
+            // Restore callback based on action text
+            if (notification.action.text.toLowerCase().includes('shortlisted') || 
+                notification.title.toLowerCase().includes('shortlisted') ||
+                notification.message.toLowerCase().includes('shortlisted')) {
+                showShortlistedView();
+                markNotificationRead(id);
+            } else if (notification.action.text.toLowerCase().includes('view details') || 
+                      notification.action.text.toLowerCase().includes('details')) {
+                // Try to find job by notification content
+                const job = AppState.jobs.find(j => 
+                    notification.title.includes(j.company) || 
+                    notification.message.includes(j.company) ||
+                    notification.title.includes(j.title) ||
+                    notification.message.includes(j.title)
+                );
+                if (job) {
+                    showJobDetail(job.id);
+                    markNotificationRead(id);
+                } else {
+                    showNotification('Job details not found', 'error');
+                }
+            } else {
+                showNotification('Action executed', 'info');
+                markNotificationRead(id);
+            }
+        } else {
+            showNotification('Action not available for this notification.', 'error');
+        }
     }
 }
 
@@ -2669,7 +2700,7 @@ function populateJobShortlistViewTable(data) {
 }
 
 function filterJobShortlistCandidates() {
-    const searchTerm = document.getElementById('job-shortlist-search').value.toLowerCase();
+    const searchTerm = document.getElementById('job-shortlist-search').value.toLowerCase().trim();
     const originalData = AppState.jobShortlisted[AppState.currentJobId];
     
     if (!originalData) return;
@@ -2681,9 +2712,14 @@ function filterJobShortlistCandidates() {
         filteredData = [
             originalData[0], // Keep headers
             ...originalData.slice(1).filter(row => {
-                return row.some(cell => 
-                    cell && cell.toString().toLowerCase().includes(searchTerm)
-                );
+                return row.some(cell => {
+                    if (!cell) return false;
+                    const cellValue = cell.toString().toLowerCase().trim();
+                    // Check for exact match, contains match, or partial word match
+                    return cellValue === searchTerm || 
+                           cellValue.includes(searchTerm) ||
+                           cellValue.split(/\s+/).some(word => word.includes(searchTerm));
+                });
             })
         ];
     }
@@ -2806,6 +2842,14 @@ function showAddNotificationModal() {
     };
 }
 
+function showEditNotificationModal() {
+    // Add event listener for action checkbox
+    document.getElementById('edit-notification-action-enabled').onchange = function() {
+        const actionSection = document.getElementById('edit-notification-action-section');
+        actionSection.style.display = this.checked ? 'block' : 'none';
+    };
+}
+
 function closeAddNotificationModal() {
     document.getElementById('add-notification-modal').classList.remove('active');
     document.body.style.overflow = 'auto';
@@ -2821,6 +2865,7 @@ function handleNotificationSubmit(event) {
     const message = document.getElementById('notification-message').value;
     const actionEnabled = document.getElementById('notification-action-enabled').checked;
     const actionText = document.getElementById('notification-action-text').value;
+    const actionLink = document.getElementById('notification-action-link').value;
     
     const notificationData = {
         type: type,
@@ -2831,7 +2876,10 @@ function handleNotificationSubmit(event) {
     if (actionEnabled && actionText) {
         notificationData.action = {
             text: actionText,
-            callback: () => showNotification('Action clicked!', 'info')
+            link: actionLink || null,
+            callback: actionLink ? 
+                () => window.open(actionLink, '_blank') : 
+                () => showNotification('Action clicked!', 'info')
         };
     }
     
@@ -2840,6 +2888,264 @@ function handleNotificationSubmit(event) {
     
     closeAddNotificationModal();
     loadAdminNotifications();
+}
+
+// All Notifications Management Functions
+function showAllNotificationsModal() {
+    document.getElementById('all-notifications-modal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    loadAllNotifications();
+}
+
+function closeAllNotificationsModal() {
+    document.getElementById('all-notifications-modal').classList.remove('active');
+    document.body.style.overflow = 'auto';
+}
+
+function loadAllNotifications() {
+    const allNotificationsList = document.getElementById('all-notifications-list');
+    
+    if (AppState.notifications.length === 0) {
+        allNotificationsList.innerHTML = `
+            <div class="admin-notification-item-full">
+                <div class="admin-notification-content-full">
+                    <h5>No notifications posted yet</h5>
+                    <p>Use the "Post New Notification" button to add announcements for students.</p>
+                </div>
+            </div>
+        `;
+        return;
+    }
+    
+    allNotificationsList.innerHTML = '';
+    
+    AppState.notifications.forEach(notification => {
+        const item = document.createElement('div');
+        item.className = 'admin-notification-item-full';
+        
+        const timeAgo = getTimeAgo(notification.time);
+        const typeBadge = getNotificationTypeBadge(notification.type);
+        
+        item.innerHTML = `
+            <div class="admin-notification-icon ${notification.type}">
+                <i class="fas fa-${getNotificationIcon(notification.type)}"></i>
+            </div>
+            <div class="admin-notification-content-full">
+                <div class="notification-type-badge ${notification.type}">${typeBadge}</div>
+                <h5>${notification.title}</h5>
+                <p>${notification.message}</p>
+                <div class="admin-notification-time-full">${timeAgo}</div>
+            </div>
+            <div class="admin-notification-actions">
+                <button class="notification-action-btn edit-notification-btn" onclick="editNotification(${notification.id})" title="Edit Notification">
+                    <i class="fas fa-edit"></i>
+                </button>
+                <button class="notification-action-btn delete-notification-btn" onclick="deleteNotification(${notification.id})" title="Delete Notification">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        `;
+        
+        allNotificationsList.appendChild(item);
+    });
+}
+
+function getNotificationTypeBadge(type) {
+    switch(type) {
+        case 'info': return 'Information';
+        case 'success': return 'Success';
+        case 'warning': return 'Warning';
+        default: return 'Info';
+    }
+}
+
+function editNotification(notificationId) {
+    const notification = AppState.notifications.find(n => n.id === notificationId);
+    if (!notification) return;
+    
+    // Populate edit form
+    document.getElementById('edit-notification-id').value = notificationId;
+    document.getElementById('edit-notification-type').value = notification.type;
+    document.getElementById('edit-notification-title').value = notification.title;
+    document.getElementById('edit-notification-message').value = notification.message;
+    
+    // Handle action button
+    if (notification.action && notification.action.text) {
+        document.getElementById('edit-notification-action-enabled').checked = true;
+        document.getElementById('edit-notification-action-text').value = notification.action.text;
+        document.getElementById('edit-notification-action-link').value = notification.action.link || '';
+        document.getElementById('edit-notification-action-section').style.display = 'block';
+    } else {
+        document.getElementById('edit-notification-action-enabled').checked = false;
+        document.getElementById('edit-notification-action-text').value = '';
+        document.getElementById('edit-notification-action-link').value = '';
+        document.getElementById('edit-notification-action-section').style.display = 'none';
+    }
+    
+    // Show edit modal
+    document.getElementById('edit-notification-modal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+    showEditNotificationModal();
+}
+
+function closeEditNotificationModal() {
+    document.getElementById('edit-notification-modal').classList.remove('active');
+    document.body.style.overflow = 'auto';
+}
+
+function handleEditNotificationSubmit(event) {
+    event.preventDefault();
+    
+    const notificationId = parseInt(document.getElementById('edit-notification-id').value);
+    const type = document.getElementById('edit-notification-type').value;
+    const title = document.getElementById('edit-notification-title').value;
+    const message = document.getElementById('edit-notification-message').value;
+    const actionEnabled = document.getElementById('edit-notification-action-enabled').checked;
+    const actionText = document.getElementById('edit-notification-action-text').value;
+    const actionLink = document.getElementById('edit-notification-action-link').value;
+    
+    // Find and update the notification
+    const notificationIndex = AppState.notifications.findIndex(n => n.id === notificationId);
+    if (notificationIndex === -1) {
+        showNotification('Notification not found', 'error');
+        return;
+    }
+    
+    const updatedNotification = {
+        ...AppState.notifications[notificationIndex],
+        type: type,
+        title: title,
+        message: message
+    };
+    
+    if (actionEnabled && actionText) {
+        updatedNotification.action = {
+            text: actionText,
+            link: actionLink || null,
+            callback: actionLink ? 
+                () => window.open(actionLink, '_blank') : 
+                () => showNotification('Action clicked!', 'info')
+        };
+    } else {
+        updatedNotification.action = null;
+    }
+    
+    AppState.notifications[notificationIndex] = updatedNotification;
+    
+    // Save to storage
+    saveDataToStorage();
+    
+    showNotification('Notification updated successfully!', 'success');
+    
+    closeEditNotificationModal();
+    loadAdminNotifications();
+    loadAllNotifications();
+    displayNotifications(); // Update student view
+}
+
+function deleteNotification(notificationId) {
+    if (!confirm('Are you sure you want to delete this notification? This action cannot be undone.')) {
+        return;
+    }
+    
+    const notificationIndex = AppState.notifications.findIndex(n => n.id === notificationId);
+    if (notificationIndex === -1) {
+        showNotification('Notification not found', 'error');
+        return;
+    }
+    
+    AppState.notifications.splice(notificationIndex, 1);
+    
+    // Save to storage
+    saveDataToStorage();
+    
+    showNotification('Notification deleted successfully!', 'success');
+    
+    loadAdminNotifications();
+    loadAllNotifications();
+    displayNotifications(); // Update student view
+}
+
+
+// Check and update job statuses based on deadlines
+function checkAndUpdateJobStatuses() {
+    const currentTime = new Date();
+    let updatedJobs = false;
+    
+    AppState.jobs.forEach(job => {
+        const deadline = new Date(job.deadline);
+        
+        // If deadline has passed and job is still "Open", change to "Interviewing"
+        if (deadline < currentTime && job.status === 'Open') {
+            job.status = 'Interviewing';
+            updatedJobs = true;
+            console.log(`Job "${job.title}" at ${job.company} automatically moved to Interviewing status (deadline passed)`);
+        }
+    });
+    
+    // Save changes if any jobs were updated
+    if (updatedJobs) {
+        saveDataToStorage();
+        showNotification('Some jobs have been automatically moved to Interviewing status (deadlines passed)', 'info');
+        
+        // Update admin dashboard if it's currently displayed
+        if (document.getElementById('admin-dashboard').style.display !== 'none') {
+            loadAdminJobList();
+        }
+        
+        // Update student dashboard if it's currently displayed
+        if (document.getElementById('student-dashboard').style.display !== 'none') {
+            displayJobs();
+        }
+    }
+}
+
+// Delete shortlisted candidates for a specific job
+function deleteJobShortlisted(jobId) {
+    const job = AppState.jobs.find(j => j.id === jobId);
+    if (!job) {
+        showNotification('Job not found', 'error');
+        return;
+    }
+    
+    const shortlistedCount = AppState.jobShortlisted[jobId] ? AppState.jobShortlisted[jobId].length - 1 : 0;
+    
+    if (shortlistedCount === 0) {
+        showNotification('No shortlisted candidates to delete for this job', 'info');
+        return;
+    }
+    
+    const confirmMessage = `Are you sure you want to delete all shortlisted candidates for "${job.title}" at ${job.company}?\n\nThis will remove ${shortlistedCount} shortlisted candidates.\n\nThis action cannot be undone!`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Remove shortlisted candidates for this job from the main shortlisted data
+    if (AppState.jobShortlisted[jobId]) {
+        const jobShortlistedIds = AppState.jobShortlisted[jobId].slice(1); // Skip header row
+        
+        // Remove candidates from main shortlisted data
+        AppState.shortlistedData = AppState.shortlistedData.filter(candidate => 
+            !jobShortlistedIds.includes(candidate.id)
+        );
+        
+        // Clear the job shortlisted data
+        delete AppState.jobShortlisted[jobId];
+    }
+    
+    // Save to storage
+    saveDataToStorage();
+    
+    showNotification(`Successfully deleted ${shortlistedCount} shortlisted candidates for ${job.company}`, 'success');
+    
+    // Update admin dashboard
+    loadAdminJobList();
+    
+    // Update student view if they're viewing shortlisted data
+    if (document.getElementById('shortlisted-view').style.display !== 'none') {
+        displayShortlistedData();
+    }
 }
 
 // Company Modal Functions
@@ -2921,7 +3227,7 @@ function populateFullCompanyListTable(data) {
 }
 
 function filterFullCompanyList() {
-    const searchTerm = document.getElementById('full-list-search').value.toLowerCase();
+    const searchTerm = document.getElementById('full-list-search').value.toLowerCase().trim();
     const originalData = AppState.currentCompanyFullData;
     
     if (!originalData) return;
@@ -2933,9 +3239,14 @@ function filterFullCompanyList() {
         filteredData = [
             originalData[0], // Keep headers
             ...originalData.slice(1).filter(row => {
-                return row.some(cell => 
-                    cell && cell.toString().toLowerCase().includes(searchTerm)
-                );
+                return row.some(cell => {
+                    if (!cell) return false;
+                    const cellValue = cell.toString().toLowerCase().trim();
+                    // Check for exact match, contains match, or partial word match
+                    return cellValue === searchTerm || 
+                           cellValue.includes(searchTerm) ||
+                           cellValue.split(/\s+/).some(word => word.includes(searchTerm));
+                });
             })
         ];
     }
