@@ -8,31 +8,16 @@
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
+    <!-- Firebase Configuration (External) -->
+    <script src="config.js"></script>
+    
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
         import { getDatabase, ref, set, get, onValue, push, remove } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
         
-        // Firebase configuration
-        // TODO: Replace with your actual Firebase configuration
-        // 1. Go to https://console.firebase.google.com/
-        // 2. Create a new project or select existing one
-        // 3. Go to Project Settings > General > Your apps
-        // 4. Add a web app and copy the config object
-        // 5. Replace the values below with your actual config
-        const firebaseConfig = {
-  apiKey: "AIzaSyCvROxPAC819zr38EVz-wTaaBDTQy4zsY0",
-  authDomain: "placement-dept-reg.firebaseapp.com",
-  databaseURL: "https://placement-dept-reg-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "placement-dept-reg",
-  storageBucket: "placement-dept-reg.firebasestorage.app",
-  messagingSenderId: "10051102959",
-  appId: "1:10051102959:web:80729b82eed0a24c3a131a",
-  measurementId: "G-S7X01S14DL"
-};
-        
-        // Initialize Firebase
-        const app = initializeApp(firebaseConfig);
+        // Initialize Firebase with external config
+        const app = initializeApp(window.firebaseConfig);
         const database = getDatabase(app);
         
         // Make Firebase functions available globally
