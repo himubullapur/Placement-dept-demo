@@ -599,6 +599,17 @@ function showJobDetail(jobId) {
             </div>
         </div>
         
+        <div class="job-detail-grid">
+            <div class="detail-item">
+                <h4><i class="fas fa-graduation-cap"></i> Eligible Branches</h4>
+                <p>${job.branches || 'Not specified'}</p>
+            </div>
+            <div class="detail-item">
+                <h4><i class="fas fa-calendar-check"></i> Eligible Batches</h4>
+                <p>${job.batches || 'Not specified'}</p>
+            </div>
+        </div>
+        
         <div class="job-detail-section">
             <h3><i class="fas fa-check-circle"></i> Eligibility Criteria</h3>
             <p>${job.eligibility}</p>
