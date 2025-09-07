@@ -21,14 +21,14 @@
         // 4. Add a web app and copy the config object
         // 5. Replace the values below with your actual config
         const firebaseConfig = {
-  apiKey: "AIzaSyCf52WY0aAR1AuS0dm-nrw_Pwsa3ZXv1DE",
-  authDomain: "placement-dept-reg-60547.firebaseapp.com",
-  databaseURL: "https://placement-dept-reg-60547-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "placement-dept-reg-60547",
-  storageBucket: "placement-dept-reg-60547.firebasestorage.app",
-  messagingSenderId: "912974320063",
-  appId: "1:912974320063:web:7cedb2c1fd7850faa0510a",
-  measurementId: "G-3B166GR68S"
+  apiKey: "AIzaSyCvROxPAC819zr38EVz-wTaaBDTQy4zsY0",
+  authDomain: "placement-dept-reg.firebaseapp.com",
+  databaseURL: "https://placement-dept-reg-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "placement-dept-reg",
+  storageBucket: "placement-dept-reg.firebasestorage.app",
+  messagingSenderId: "10051102959",
+  appId: "1:10051102959:web:80729b82eed0a24c3a131a",
+  measurementId: "G-S7X01S14DL"
 };
         
         // Initialize Firebase
@@ -78,10 +78,6 @@
         <!-- Student Dashboard -->
         <div id="student-dashboard" class="page-content active">
             <div class="container">
-                <div class="dashboard-header">
-                    <h1 class="page-title animate-fade-in">Eligible Branches</h1>
-                    <p class="page-subtitle animate-fade-in-delay">Discover your next career opportunity at Dayananda Sagar Institutions</p>
-                </div>
 
                 <!-- Shortlisted Notification Banner -->
                 <div id="shortlisted-notification" class="notification-banner" style="display: none;">
@@ -121,7 +117,7 @@
                 <div class="search-filter-section animate-slide-up">
                     <div class="search-bar">
                         <i class="fas fa-search"></i>
-                        <input type="text" id="job-search" placeholder="Search by company or job title..." oninput="filterJobs()">
+                        <input type="text" id="job-search" placeholder="Search by company name" oninput="filterJobs()">
                     </div>
                     <div class="filter-dropdown">
                         <select id="status-filter" onchange="filterJobs()">
@@ -182,6 +178,14 @@
                         </div>
                     </div>
 
+                    <!-- Search Section -->
+                    <div class="search-filter-section" style="margin-bottom: 2rem;">
+                        <div class="search-bar">
+                            <i class="fas fa-search"></i>
+                            <input type="text" id="shortlisted-search" placeholder="Search by company, or any field..." oninput="filterShortlistedCandidates()">
+                        </div>
+                    </div>
+
                     <!-- Company View -->
                     <div id="company-view" class="company-view">
                         <div class="companies-header">
@@ -192,6 +196,7 @@
                             <!-- Company cards will be loaded here -->
                         </div>
                     </div>
+
 
                 </div>
             </div>
@@ -251,6 +256,7 @@
                     </div>
                 </div>
 
+
                 <!-- Admin Management Section -->
                 <div class="management-section" style="margin-top: 2rem;">
                     <div class="section-header">
@@ -282,7 +288,13 @@
                     
                     <!-- Recent Notifications Preview -->
                     <div class="notifications-preview">
-                        <h3>Recent Notifications</h3>
+                        <div class="notifications-preview-header">
+                            <h3>Recent Notifications</h3>
+                            <button onclick="showAllNotificationsModal()" class="view-all-btn">
+                                <i class="fas fa-list"></i>
+                                View All Notifications
+                            </button>
+                        </div>
                         <div id="admin-notifications-list" class="admin-notifications-list">
                             <!-- Recent notifications will be shown here -->
                         </div>
@@ -605,10 +617,72 @@
                     <div id="notification-action-section" class="form-group" style="display: none;">
                         <label for="notification-action-text">Action Button Text</label>
                         <input type="text" id="notification-action-text" placeholder="e.g., View Details, Apply Now">
+                        <label for="notification-action-link">Action Button Link (Optional)</label>
+                        <input type="url" id="notification-action-link" placeholder="https://example.com/apply">
+                        <small class="form-help">Leave empty to use default action behavior</small>
                     </div>
                     <div class="form-actions">
                         <button type="button" onclick="closeAddNotificationModal()" class="cancel-btn">Cancel</button>
                         <button type="submit" class="submit-btn">Post Notification</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- All Notifications Management Modal -->
+        <div id="all-notifications-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeAllNotificationsModal()">&times;</span>
+                <h2>Manage Notifications</h2>
+                <div class="notifications-management">
+                    <div class="notifications-list-container">
+                        <div id="all-notifications-list" class="all-notifications-list">
+                            <!-- All notifications will be shown here -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Edit Notification Modal -->
+        <div id="edit-notification-modal" class="modal">
+            <div class="modal-content">
+                <span class="close" onclick="closeEditNotificationModal()">&times;</span>
+                <h2>Edit Notification</h2>
+                <form id="edit-notification-form" onsubmit="handleEditNotificationSubmit(event)">
+                    <input type="hidden" id="edit-notification-id">
+                    <div class="form-group">
+                        <label for="edit-notification-type">Type</label>
+                        <select id="edit-notification-type" required>
+                            <option value="info">Information</option>
+                            <option value="success">Success/Achievement</option>
+                            <option value="warning">Important Notice</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-notification-title">Title</label>
+                        <input type="text" id="edit-notification-title" placeholder="Enter notification title..." required>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-notification-message">Message</label>
+                        <textarea id="edit-notification-message" rows="4" placeholder="Enter notification message..." required></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>
+                            <input type="checkbox" id="edit-notification-action-enabled">
+                            Add Action Button
+                        </label>
+                    </div>
+                    <div id="edit-notification-action-section" class="form-group" style="display: none;">
+                        <label for="edit-notification-action-text">Action Button Text</label>
+                        <input type="text" id="edit-notification-action-text" placeholder="e.g., View Details, Apply Now">
+                        <label for="edit-notification-action-link">Action Button Link (Optional)</label>
+                        <input type="url" id="edit-notification-action-link" placeholder="https://example.com/apply">
+                        <small class="form-help">Leave empty to use default action behavior</small>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" onclick="closeEditNotificationModal()" class="cancel-btn">Cancel</button>
+                        <button type="submit" class="submit-btn">Update Notification</button>
                     </div>
                 </form>
             </div>
